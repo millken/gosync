@@ -112,6 +112,7 @@ type readOnly[K comparable, V any] struct {
 	amended bool // true if the dirty map contains some key not in m.
 }
 
+// Map is a map that can be safely used by multiple goroutines without additional locking or coordination.
 type Map[K comparable, V any] struct {
 	mu       sync.Mutex
 	read     atomic.Value
@@ -120,6 +121,9 @@ type Map[K comparable, V any] struct {
 	expunged unsafe.Pointer
 }
 
+// Map is like a Go map[interface{}]interface{} but is safe for concurrent use
+// by multiple goroutines without additional locking or coordination.
+// Loads, stores, and deletes run in amortized constant time.
 func NewMap[K comparable, V any]() *Map[K, V] {
 	m := &Map[K, V]{
 		read:     atomic.Value{},
@@ -131,7 +135,7 @@ func NewMap[K comparable, V any]() *Map[K, V] {
 // Load loads the value stored in the map for a key, or nil if no value is present.
 func (m *Map[K, V]) Load(key K) (value V, ok bool) {
 	read := m.loadReadOnly()
-	e, ok := read.m[key] //todo: performance
+	e, ok := read.m[key]
 	if !ok && read.amended {
 		m.mu.Lock()
 		// Avoid reporting a spurious miss if m.dirty got promoted while we were
