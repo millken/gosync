@@ -154,7 +154,7 @@ func TestMapRangeNestedCall(t *testing.T) { // Issue 46399
 }
 
 func TestIntMap(t *testing.T) {
-	var m Map[int, int]
+	m := NewMap[int, int]()
 	m.Store(1, 2)
 	_, ok := m.Load(1)
 	if !ok {
@@ -192,7 +192,7 @@ func TestIntMap(t *testing.T) {
 }
 
 func TestRequests(t *testing.T) {
-	var m Map[string, *http.Request]
+	m := NewMap[string, *http.Request]()
 	m.Store("r", &http.Request{})
 	_, ok := m.Load("r")
 	if !ok {

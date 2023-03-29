@@ -1,3 +1,6 @@
+//go:build go1.18
+// +build go1.18
+
 // inspired by https://github.com/a8m/syncmap, but it is not generic and requires auto-generation, so I rewrote it.
 package gosync
 
@@ -12,9 +15,9 @@ type entry[V any] struct {
 	expunged unsafe.Pointer
 }
 
-func newEntry[V any](i V) *entry[V] {
+func newEntry[V any](i V, expunged unsafe.Pointer) *entry[V] {
 	e := &entry[V]{
-		expunged: unsafe.Pointer(new(V)),
+		expunged: expunged,
 	}
 	e.p.Store(&i)
 	return e
@@ -28,13 +31,13 @@ func (e *entry[V]) load() (value V, ok bool) {
 	return *p, true
 }
 
-func (e *entry[V]) tryStore(v V) bool {
+func (e *entry[V]) tryStore(v *V) bool {
 	for {
 		p := e.p.Load()
 		if p == (*V)(e.expunged) {
 			return false
 		}
-		if e.p.CompareAndSwap(p, &v) {
+		if e.p.CompareAndSwap(p, v) {
 			return true
 		}
 	}
@@ -44,8 +47,8 @@ func (e *entry[V]) unexpungeLocked() (wasExpunged bool) {
 	return e.p.Swap((*V)(e.expunged)) == (*V)(e.expunged)
 }
 
-func (e *entry[V]) storeLocked(v V) {
-	e.p.Store(&v)
+func (e *entry[V]) storeLocked(v *V) {
+	e.p.Store(v)
 }
 
 // tryLoadOrStore atomically loads or stores a value if the entry is not
@@ -110,22 +113,31 @@ type readOnly[K comparable, V any] struct {
 }
 
 type Map[K comparable, V any] struct {
-	mu     sync.Mutex
-	read   atomic.Value
-	dirty  map[K]*entry[V]
-	misses int
+	mu       sync.Mutex
+	read     atomic.Value
+	dirty    map[K]*entry[V]
+	misses   int
+	expunged unsafe.Pointer
+}
+
+func NewMap[K comparable, V any]() *Map[K, V] {
+	m := &Map[K, V]{
+		read:     atomic.Value{},
+		expunged: unsafe.Pointer(new(V)),
+	}
+	return m
 }
 
 // Load loads the value stored in the map for a key, or nil if no value is present.
 func (m *Map[K, V]) Load(key K) (value V, ok bool) {
-	read, _ := m.read.Load().(readOnly[K, V])
-	e, ok := read.m[key]
+	read := m.loadReadOnly()
+	e, ok := read.m[key] //todo: performance
 	if !ok && read.amended {
 		m.mu.Lock()
 		// Avoid reporting a spurious miss if m.dirty got promoted while we were
 		// blocked on m.mu. (If further loads of the same key will not miss, it's
 		// not worth copying the dirty map for this key.)
-		read, _ = m.read.Load().(readOnly[K, V])
+		read = m.loadReadOnly()
 		e, ok = read.m[key]
 		if !ok && read.amended {
 			e, ok = m.dirty[key]
@@ -147,37 +159,44 @@ func (m *Map[K, V]) missLocked() {
 	if m.misses < len(m.dirty) {
 		return
 	}
-	m.read.Store(readOnly[K, V]{m: m.dirty})
+	m.read.Store(&readOnly[K, V]{m: m.dirty})
 	m.dirty = nil
 	m.misses = 0
 }
 
+func (m *Map[K, V]) loadReadOnly() readOnly[K, V] {
+	if p := m.read.Load(); p != nil {
+		return *p.(*readOnly[K, V])
+	}
+	return readOnly[K, V]{}
+}
+
 // Store sets the value for a key.
 func (m *Map[K, V]) Store(key K, value V) {
-	read, _ := m.read.Load().(readOnly[K, V])
-	if e, ok := read.m[key]; ok && e.tryStore(value) {
+	read := m.loadReadOnly()
+	if e, ok := read.m[key]; ok && e.tryStore(&value) {
 		return
 	}
 
 	m.mu.Lock()
-	read, _ = m.read.Load().(readOnly[K, V])
+	read = m.loadReadOnly()
 	if e, ok := read.m[key]; ok {
 		if e.unexpungeLocked() {
 			// The entry was previously expunged, which implies that there is a
 			// non-nil dirty map and this entry is not in it.
 			m.dirty[key] = e
 		}
-		e.storeLocked(value)
+		e.storeLocked(&value)
 	} else if e, ok := m.dirty[key]; ok {
-		e.storeLocked(value)
+		e.storeLocked(&value)
 	} else {
 		if !read.amended {
 			// We're adding the first new key to the dirty map.
 			// Make sure it is allocated and mark the read-only map as incomplete.
 			m.dirtyLocked()
-			m.read.Store(readOnly[K, V]{m: read.m, amended: true})
+			m.read.Store(&readOnly[K, V]{m: read.m, amended: true})
 		}
-		m.dirty[key] = newEntry(value)
+		m.dirty[key] = newEntry(value, m.expunged)
 	}
 	m.mu.Unlock()
 }
@@ -187,7 +206,7 @@ func (m *Map[K, V]) Store(key K, value V) {
 // The loaded result is true if the value was loaded, false if stored.
 func (m *Map[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
 	// Avoid locking if it's a clean hit.
-	read, _ := m.read.Load().(readOnly[K, V])
+	read := m.loadReadOnly()
 	if e, ok := read.m[key]; ok {
 		actual, loaded, ok := e.tryLoadOrStore(value)
 		if ok {
@@ -196,7 +215,7 @@ func (m *Map[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
 	}
 
 	m.mu.Lock()
-	read, _ = m.read.Load().(readOnly[K, V])
+	read = m.loadReadOnly()
 	if e, ok := read.m[key]; ok {
 		if e.unexpungeLocked() {
 			m.dirty[key] = e
@@ -210,9 +229,9 @@ func (m *Map[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
 			// We're adding the first new key to the dirty map.
 			// Make sure it is allocated and mark the read-only map as incomplete.
 			m.dirtyLocked()
-			m.read.Store(readOnly[K, V]{m: read.m, amended: true})
+			m.read.Store(&readOnly[K, V]{m: read.m, amended: true})
 		}
-		m.dirty[key] = newEntry(value)
+		m.dirty[key] = newEntry(value, m.expunged)
 		actual, loaded = value, false
 	}
 	m.mu.Unlock()
@@ -225,7 +244,7 @@ func (m *Map[K, V]) dirtyLocked() {
 		return
 	}
 
-	read, _ := m.read.Load().(readOnly[K, V])
+	read := m.loadReadOnly()
 	m.dirty = make(map[K]*entry[V], len(read.m))
 	for k, e := range read.m {
 		if !e.tryExpungeLocked() {
@@ -237,11 +256,11 @@ func (m *Map[K, V]) dirtyLocked() {
 // LoadAndDelete deletes the value for a key, returning the previous value if any.
 // The loaded result reports whether the key was present.
 func (m *Map[K, V]) LoadAndDelete(key K) (value V, loaded bool) {
-	read, _ := m.read.Load().(readOnly[K, V])
+	read := m.loadReadOnly()
 	e, ok := read.m[key]
 	if !ok && read.amended {
 		m.mu.Lock()
-		read, _ = m.read.Load().(readOnly[K, V])
+		read = m.loadReadOnly()
 		e, ok = read.m[key]
 		if !ok && read.amended {
 			e, ok = m.dirty[key]
@@ -270,17 +289,17 @@ func (m *Map[K, V]) Range(f func(key K, value V) bool) {
 	// present at the start of the call to Range.
 	// If read.amended is false, then read.m satisfies that property without
 	// requiring us to hold m.mu for a long time.
-	read, _ := m.read.Load().(readOnly[K, V])
+	read := m.loadReadOnly()
 	if read.amended {
 		// m.dirty contains keys not in read.m. Fortunately, Range is already O(N)
 		// (assuming the caller does not break out early), so a call to Range
 		// amortizes an entire copy of the map: we can promote the dirty copy
 		// immediately!
 		m.mu.Lock()
-		read, _ = m.read.Load().(readOnly[K, V])
+		read = m.loadReadOnly()
 		if read.amended {
 			read = readOnly[K, V]{m: m.dirty}
-			m.read.Store(read)
+			m.read.Store(&read)
 			m.dirty = nil
 			m.misses = 0
 		}
