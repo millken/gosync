@@ -1,27 +1,32 @@
 package gosync
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
-type one int
+type one int32
 
 func (o *one) Increment() {
-	*o++
+	atomic.AddInt32((*int32)(o), 1)
 }
 
-func run(t *testing.T, cache *Cache, o *one, c chan bool, i int) {
+func (o *one) Get() int32 {
+	return atomic.LoadInt32((*int32)(o))
+}
+
+func run(t *testing.T, cache *Ontime, o *one, c chan bool, i int) {
 	cache.Do(time.Millisecond, func() { o.Increment() })
-	if v := *o; int(v) != i {
+	if v := o.Get(); int(v) != i {
 		t.Errorf("cache failed inside run: %d is not %d", v, i)
 	}
 	c <- true
 }
 
-func TestCache(t *testing.T) {
+func TestOntime(t *testing.T) {
 	o := new(one)
-	cache := new(Cache)
+	cache := new(Ontime)
 	c := make(chan bool)
 	const N = 10
 	for i := 0; i < N; i++ {
@@ -36,41 +41,41 @@ func TestCache(t *testing.T) {
 	}
 }
 
-func TestCacheWithZeroDuration(t *testing.T) {
+func TestOntimeWithZeroDuration(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatalf("Cache.Do did not panic")
 		}
 	}()
 	o := new(one)
-	cache := new(Cache)
-	cache.Do(0, func() { o.Increment() })
+	a := new(Ontime)
+	a.Do(0, func() { o.Increment() })
 }
 
-func TestCachePanic(t *testing.T) {
-	var cache Cache
+func TestOntimePanic(t *testing.T) {
+	var on Ontime
 	func() {
 		defer func() {
 			if r := recover(); r == nil {
 				t.Fatalf("Cache.Do did not panic")
 			}
 		}()
-		cache.Do(time.Second, func() {
+		on.Do(time.Second, func() {
 			panic("failed")
 		})
 	}()
 
-	cache.Do(time.Second, func() {
+	on.Do(time.Second, func() {
 		t.Fatalf("Cache.Do called twice")
 	})
 }
 
 func BenchmarkCache(b *testing.B) {
-	var cache Cache
+	var on Ontime
 	f := func() {}
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			cache.Do(time.Second, f)
+			on.Do(time.Second, f)
 		}
 	})
 }

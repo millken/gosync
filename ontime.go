@@ -6,14 +6,14 @@ import (
 	"time"
 )
 
-// Cache provides a mechanism to cache a value for a given duration.
-type Cache struct {
+// Ontime provides a mechanism to cache a value for a given duration.
+type Ontime struct {
 	done uint32
 	m    sync.Mutex
 }
 
 // Do executes f if the cache is empty, and caches the result for duration.
-func (o *Cache) Do(duration time.Duration, f func()) {
+func (o *Ontime) Do(duration time.Duration, f func()) {
 	if duration == 0 {
 		panic("duration must be non-zero")
 	}
@@ -29,7 +29,7 @@ func (o *Cache) Do(duration time.Duration, f func()) {
 	}
 }
 
-func (o *Cache) doSlow(f func()) {
+func (o *Ontime) doSlow(f func()) {
 	o.m.Lock()
 	defer o.m.Unlock()
 	if o.done == 0 {
