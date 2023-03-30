@@ -4,8 +4,6 @@ import (
 	"runtime/debug"
 	"sync"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
 type pooledValue[T any] struct {
@@ -40,7 +38,9 @@ func TestPoolNew(t *testing.T) {
 		func() {
 			x := p.Get()
 			defer p.Put(x)
-			require.Equal(t, t.Name(), x.value)
+			if x.value != t.Name() {
+				t.Fatalf("unexpected value: %s", x.value)
+			}
 		}()
 	}
 
@@ -51,7 +51,9 @@ func TestPoolNew(t *testing.T) {
 
 	// Now that the pool is empty, it should use the value specified in the
 	// underlying sync.Pool.New func.
-	require.Equal(t, "new", p.Get().value)
+	if x := p.Get(); x.value != "new" {
+		t.Fatalf("unexpected value: %s", x.value)
+	}
 }
 
 func TestPoolNewRace(t *testing.T) {

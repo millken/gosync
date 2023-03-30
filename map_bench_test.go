@@ -206,7 +206,7 @@ func BenchmarkLoadMostlyHits(b *testing.B) {
 	})
 
 	b.Run("gosync.Map", func(b *testing.B) {
-		var m Map[int, int]
+		m := NewMap[int, int]()
 		// setup:
 		for i := 0; i < hits; i++ {
 			m.LoadOrStore(i, i)
@@ -217,7 +217,7 @@ func BenchmarkLoadMostlyHits(b *testing.B) {
 
 		b.ResetTimer()
 
-		perG := func(b *testing.B, pb *testing.PB, i int, m Map[int, int]) {
+		perG := func(b *testing.B, pb *testing.PB, i int, m *Map[int, int]) {
 			for ; pb.Next(); i++ {
 				m.Load(i % (hits + misses))
 			}
@@ -252,7 +252,7 @@ func BenchmarkLoadMostlyMisses(b *testing.B) {
 	})
 
 	b.Run("gosync.Map", func(b *testing.B) {
-		var m Map[int, int]
+		m := NewMap[int, int]()
 		// setup:
 		for i := 0; i < hits; i++ {
 			m.LoadOrStore(i, i)
@@ -265,7 +265,7 @@ func BenchmarkLoadMostlyMisses(b *testing.B) {
 		b.ResetTimer()
 
 		// perG:
-		perG := func(b *testing.B, pb *testing.PB, i int, m Map[int, int]) {
+		perG := func(b *testing.B, pb *testing.PB, i int, m *Map[int, int]) {
 			for ; pb.Next(); i++ {
 				m.Load(i % (hits + misses))
 			}
@@ -313,7 +313,7 @@ func BenchmarkLoadOrStoreBalanced(b *testing.B) {
 
 	// syncmap code:
 	b.Run("gosync.Map", func(b *testing.B) {
-		var m Map[int, int]
+		m := NewMap[int, int]()
 		// setup:
 		for i := 0; i < hits; i++ {
 			m.LoadOrStore(i, i)
@@ -326,7 +326,7 @@ func BenchmarkLoadOrStoreBalanced(b *testing.B) {
 		b.ResetTimer()
 
 		// perG:
-		perG := func(b *testing.B, pb *testing.PB, i int, m Map[int, int]) {
+		perG := func(b *testing.B, pb *testing.PB, i int, m *Map[int, int]) {
 			for ; pb.Next(); i++ {
 				j := i % (hits + misses)
 				if j < hits {
@@ -366,14 +366,14 @@ func BenchmarkLoadOrStoreUnique(b *testing.B) {
 
 	// syncmap code:
 	b.Run("gosync.Map", func(b *testing.B) {
-		var m Map[int, int]
+		m := NewMap[int, int]()
 		// setup:
 
 		// reset:
 		b.ResetTimer()
 
 		// perG:
-		perG := func(b *testing.B, pb *testing.PB, i int, m Map[int, int]) {
+		perG := func(b *testing.B, pb *testing.PB, i int, m *Map[int, int]) {
 			for ; pb.Next(); i++ {
 				m.LoadOrStore(i, i)
 			}
@@ -401,11 +401,11 @@ func BenchmarkLoadOrStoreCollision(b *testing.B) {
 
 	// syncmap code:
 	b.Run("gosync.Map", func(b *testing.B) {
-		var m Map[int, int]
+		m := NewMap[int, int]()
 		b.ResetTimer()
 
 		// perG:
-		perG := func(b *testing.B, pb *testing.PB, i int, m Map[int, int]) {
+		perG := func(b *testing.B, pb *testing.PB, i int, m *Map[int, int]) {
 			for ; pb.Next(); i++ {
 				m.LoadOrStore(0, 0)
 			}
@@ -437,14 +437,14 @@ func BenchmarkRange(b *testing.B) {
 
 	// syncmap code:
 	b.Run("gosync.Map", func(b *testing.B) {
-		var m Map[int, int]
+		m := NewMap[int, int]()
 		// setup:
 
 		// reset:
 		b.ResetTimer()
 
 		// perG:
-		perG := func(b *testing.B, pb *testing.PB, i int, m Map[int, int]) {
+		perG := func(b *testing.B, pb *testing.PB, i int, m *Map[int, int]) {
 			for ; pb.Next(); i++ {
 				m.Range(func(_, _ int) bool { return true })
 			}
@@ -479,10 +479,10 @@ func BenchmarkAdversarialAlloc(b *testing.B) {
 
 	// syncmap code:
 	b.Run("gosync.Map", func(b *testing.B) {
-		var m Map[int, int]
+		m := NewMap[int, int]()
 		b.ResetTimer()
 
-		perG := func(b *testing.B, pb *testing.PB, i int, m Map[int, int]) {
+		perG := func(b *testing.B, pb *testing.PB, i int, m *Map[int, int]) {
 			var stores, loadsSinceStore int
 			for ; pb.Next(); i++ {
 				m.Load(i)
@@ -533,14 +533,14 @@ func BenchmarkAdversarialDelete(b *testing.B) {
 
 	// syncmap code:
 	b.Run("gosync.Map", func(b *testing.B) {
-		var m Map[int, int]
+		m := NewMap[int, int]()
 		// setup:
 
 		// reset:
 		b.ResetTimer()
 
 		// perG:
-		perG := func(b *testing.B, pb *testing.PB, i int, m Map[int, int]) {
+		perG := func(b *testing.B, pb *testing.PB, i int, m *Map[int, int]) {
 			for ; pb.Next(); i++ {
 				m.Load(i)
 
