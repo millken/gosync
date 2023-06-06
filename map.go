@@ -320,3 +320,31 @@ func (m *Map[K, V]) Range(f func(key K, value V) bool) {
 		}
 	}
 }
+
+// Len returns the number of entries in the map.
+func (m *Map[K, V]) Len() int {
+	count := 0
+	m.Range(func(K, V) bool {
+		count++
+		return true
+	})
+	return count
+}
+
+// Clear removes all entries from the map.
+func (m *Map[K, V]) Clear() {
+	m.mu.Lock()
+	m.dirty = nil
+	m.read.Store(&readOnly[K, V]{m: make(map[K]*entry[V])})
+	m.mu.Unlock()
+}
+
+// Clone returns a shallow copy of the map.
+func (m *Map[K, V]) Clone() *Map[K, V] {
+	c := NewMap[K, V]()
+	m.Range(func(k K, v V) bool {
+		c.Store(k, v)
+		return true
+	})
+	return c
+}

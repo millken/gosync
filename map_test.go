@@ -10,6 +10,35 @@ import (
 	"testing"
 )
 
+// isNil gets whether the object is nil or not.
+func isNil(object interface{}) bool {
+	if object == nil {
+		return true
+	}
+	value := reflect.ValueOf(object)
+	kind := value.Kind()
+	if kind >= reflect.Chan && kind <= reflect.Slice && value.IsNil() {
+		return true
+	}
+	return false
+}
+
+// areEqual gets whether a equals b or not.
+func areEqual(a, b interface{}) bool {
+	if isNil(a) && isNil(b) {
+		return true
+	}
+	if isNil(a) || isNil(b) {
+		return false
+	}
+	if reflect.DeepEqual(a, b) {
+		return true
+	}
+	aValue := reflect.ValueOf(a)
+	bValue := reflect.ValueOf(b)
+	return aValue == bValue
+}
+
 type mapInterface interface {
 	Load(any) (any, bool)
 	Store(key, value any)
@@ -177,6 +206,17 @@ func TestIntMap(t *testing.T) {
 		t.Fatal("loaded value should be the same")
 	}
 	s, _ := m.LoadOrStore(2, 3)
+	if m.Len() != 2 {
+		t.Fatalf("length should be 2, got %d", m.Len())
+	}
+	m2 := m.Clone()
+	if areEqual(m, m2) {
+		t.Fatal("clone should be the same")
+	}
+	m2.Clear()
+	if m2.Len() != 0 {
+		t.Fatalf("length should be 0, got %d", m2.Len())
+	}
 	kv := map[int]int{1: r, 2: s}
 	m.Range(func(key, value int) bool {
 		v, ok := kv[key]
