@@ -1,3 +1,3 @@
 module github.com/millken/gosync
 
-go 1.19
+go 1.20
