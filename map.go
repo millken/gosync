@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // inspired by https://github.com/a8m/syncmap, but it is not generic and requires auto-generation, so I rewrote it.
 package gosync
 
