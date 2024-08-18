@@ -10,6 +10,10 @@ type pooledValue[T any] struct {
 	value T
 }
 
+func (p pooledValue[T]) Reset() {
+
+}
+
 func TestPoolNew(t *testing.T) {
 	// Disable GC to avoid the victim cache during the test.
 	defer debug.SetGCPercent(debug.SetGCPercent(-1))

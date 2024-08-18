@@ -4,34 +4,35 @@ import (
 	"sync"
 )
 
-// A Pool is a generic wrapper around [sync.Pool] to provide strongly-typed
-// object pooling.
-//
-// Note that SA6002 (ref: https://staticcheck.io/docs/checks/#SA6002) will
-// not be detected, so all internal pool use must take care to only store
-// pointer types.
-type Pool[T any] struct {
-	pool sync.Pool
+type PointerWithReset[T any] interface {
+	*T
+
+	Reset()
 }
 
-// NewPool returns a new [Pool] for T, and will use fn to construct new Ts when
-// the pool is empty.
-func NewPool[T any](fn func() T) *Pool[T] {
-	return &Pool[T]{
-		pool: sync.Pool{
-			New: func() any {
-				return fn()
-			},
-		},
+type Pool[T any, P PointerWithReset[T]] struct {
+	pool sync.Pool
+	New  func() P
+}
+
+func NewPool[T any, P PointerWithReset[T]](new func() P) *Pool[T, P] {
+	return &Pool[T, P]{
+		New: new,
 	}
 }
 
-// Get gets a T from the pool, or creates a new one if the pool is empty.
-func (p *Pool[T]) Get() T {
-	return p.pool.Get().(T)
+func (p *Pool[T, P]) Put(value P) {
+	if value != nil {
+		value.Reset()
+		p.pool.Put(value)
+	}
 }
 
-// Put returns x into the pool.
-func (p *Pool[T]) Put(x T) {
-	p.pool.Put(x)
+func (p *Pool[T, P]) Get() P {
+	rv, ok := p.pool.Get().(P)
+	if ok && rv != nil {
+		return rv
+	}
+
+	return p.New()
 }
